@@ -1,0 +1,59 @@
+{
+    "name": "LoggerheadSeaTurtle_PITS",
+    "n_gpu": 1,
+
+    "arch": {
+        "type": "EfficientNetB3TemperatureModel",
+        "args": {}
+    },
+    "data_loader": {
+        "type": "TurtleDataLoader",
+        "args":{
+            "data_dir": "D:\\TurtleID",
+            "batch_size": 50,
+            "shuffle": true,
+            "training_mode": "classification",
+            "image_root": "SeeTurtleID-MD+SAM-foreground",
+            "split_name": "closed",
+            "crop_mode": "none",
+            "num_workers": 8
+        }
+    },
+      "optimizer": {
+        "type": "AdamW",
+        "args":{
+            "lr": 0.001,
+            "weight_decay": 0,
+            "amsgrad": true
+        }
+    },
+    "loss": {
+        "type": "PerInstanceTemperatureScalingLoss",
+        "args":
+        {
+            "lambda_weight": 0.1
+        }
+    },
+    "metrics": [
+        "accuracy"
+    ],
+    "lr_scheduler": {
+        "type": "CosineAnnealingLR",
+        "args": {
+            "T_max": 100,
+            "eta_min": 0.00001
+        }
+    },
+    "trainer": {
+        "epochs": 100,
+
+        "save_dir": "outputs",
+        "save_period": 25,
+        "verbosity": 2,
+        
+        "monitor": "max val_accuracy",
+        "early_stop": 30,
+
+        "tensorboard": true
+    }
+}

@@ -1,0 +1,8 @@
+name: frg-bgr-modelling
+channels:
+  - pytorch
+  - anaconda
+dependencies:
+  - python=3.8
+  - pytorch=2.0
+  - torchvision=0.15
