@@ -1,11 +1,6 @@
 import copy
-import json
 import math
-from collections import deque
-
-import json5
 import torch
-from torch.nn import functional as F
 
 def parse_coords(coord_string):
     coord = coord_string.split('-')

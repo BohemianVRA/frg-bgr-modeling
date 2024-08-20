@@ -9,3 +9,4 @@ dependencies:
   - torchvision=0.15
   - pytorch-cuda=11.7
   - pandas
+  - tqdm
