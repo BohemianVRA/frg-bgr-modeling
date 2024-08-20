@@ -15,9 +15,9 @@ import numpy as np
 from parse_config import ConfigParser
 from model.metric import accuracy
 
-from fgvc.special.calibration import get_temperature, _ECELoss
 
 from model.priors import MovingLocationPrior, BaseLocationPrior, MultipleHomeLocationsPrior, MultipleMovingLocationsPrior
+from utils.util import _ECELoss
 
 
 def main(config, checkpoint_path):
@@ -40,12 +40,6 @@ def main(config, checkpoint_path):
     prior = config.init_obj('prior', module_priors, dataset=train_data_loader.dataset) if 'prior' in config else None
 
 
-    identity_labels = list(sorted(((k, v) for k, v in train_data_loader.dataset.name_to_identity_map.items()), key=lambda x: x[1]))
-    identity_labels = [x[0] for x in identity_labels]
-
-
-
-
     with torch.no_grad():
         valid_outputs, valid_targets, valid_meta_data = [], [], []
         for i, (data, target, meta_data) in enumerate(tqdm(valid_data_loader, 'Processing validation set')):
@@ -65,11 +59,14 @@ def main(config, checkpoint_path):
 
     valid_meta_data = [json.loads(m) for m in valid_meta_data]
 
-    for m, identity_id in zip(valid_meta_data, valid_targets):
-        m['date'] = datetime.strptime(m['date'], '%d.%m.%Y %H:%M')
-        m['is_location_in_training_set'] = m['grid_code'] in train_data_loader.dataset.identity_to_all_locations_map[identity_id]
+    dataset_has_locations = hasattr( train_data_loader.dataset, 'identity_to_all_locations_map')
 
-    dates_sort = [m['date'] for m in valid_meta_data]
+    for m, identity_id in zip(valid_meta_data, valid_targets):
+        m[train_data_loader.dataset.date_column_name] = datetime.strptime(m[train_data_loader.dataset.date_column_name], '%d.%m.%Y %H:%M')
+        if dataset_has_locations:
+            m['is_location_in_training_set'] = m['grid_code'] in train_data_loader.dataset.identity_to_all_locations_map[identity_id]
+
+    dates_sort = [m[train_data_loader.dataset.date_column_name] for m in valid_meta_data]
     image_id_sort = [m['image_id'].split('/')[-1] for m in valid_meta_data]
     sort_ix = np.lexsort((image_id_sort, dates_sort))
 
@@ -81,34 +78,49 @@ def main(config, checkpoint_path):
     valid_targets = valid_targets[sort_ix]
     valid_meta_data = [valid_meta_data[ix] for ix in sort_ix]
 
-    new_location_ix = [i for i, m in enumerate(valid_meta_data) if not m['is_location_in_training_set']]
-
-    orig_predictions = valid_outputs[0]
-    # orig_predictions = valid_outputs
-
-    orig_acc = accuracy( orig_predictions, valid_targets)
-    orig_acc_new_location = accuracy(orig_predictions[new_location_ix, :], valid_targets[new_location_ix])
 
 
-    ece_criterion = _ECELoss()
+    if isinstance(valid_outputs, tuple):
+        logit_predictions = valid_outputs[0]
+        temperature_predictions = valid_outputs[1]
+    else:
+        logit_predictions = valid_outputs
+        temperature_predictions = None
 
-    softplus = nn.Softplus()
-    temperature = softplus(valid_outputs[1].squeeze()) + 1.
-    logits = softplus(valid_outputs[0])
-    calibrated_outputs = torch.softmax(logits / temperature[:, None], dim=1)
-    orig_ece = ece_criterion(logits / temperature[:, None], valid_targets)
+    no_prior_acc = accuracy(logit_predictions, valid_targets)
+    print('Accuracy without prior = {:.2f}%'.format(no_prior_acc * 100))
 
-    print('Accuracy without prior {} (new location {}, ECE={})'.format(orig_acc * 100, orig_acc_new_location * 100, orig_ece))
+    if dataset_has_locations:
+        new_location_ix = [i for i, m in enumerate(valid_meta_data) if not m['is_location_in_training_set']]
+        no_prior_acc_new_location = accuracy(logit_predictions[new_location_ix, :], valid_targets[new_location_ix])
+        print('Accuracy without prior in new locations only = {:.2f}%'.format(no_prior_acc_new_location * 100))
 
+    if temperature_predictions is not None:
 
-    valid_predictions = prior.apply(calibrated_outputs, valid_meta_data)
+        # Calculate network outputs
+        softplus = nn.Softplus()
+        temperature = softplus(temperature_predictions.squeeze()) + 1.
+        logits = softplus(logit_predictions)
+        calibrated_outputs = torch.softmax(logits / temperature[:, None], dim=1)
 
+        # Calculate ECE _before_ prior is applied
+        ece_criterion = _ECELoss()
+        no_prior_ece = ece_criterion(logits / temperature[:, None], valid_targets)
+        print('Expected Calibration Error (ECE) without prior = {:.3f} '.format(no_prior_ece.item()))
 
-    acc = accuracy( valid_predictions, valid_targets)
-    acc_new_location = accuracy( valid_predictions[new_location_ix, :], valid_targets[new_location_ix])
-    ece = ece_criterion(valid_predictions.log(), valid_targets)
-    print('Accuracy with prior {} (new location {}, ECE={})'.format(acc * 100, acc_new_location * 100, ece))
+        if prior is not None:
+            # Apply prior
+            valid_predictions = prior.apply(calibrated_outputs, valid_meta_data)
 
+            acc = accuracy( valid_predictions, valid_targets)
+            print('Accuracy with prior {} = {:.2f}%'.format(config['prior']['type'], acc * 100))
+
+            if dataset_has_locations:
+                acc_new_location = accuracy( valid_predictions[new_location_ix, :], valid_targets[new_location_ix])
+                print('Accuracy with prior {} in new locations only = {:.2f}%'.format(config['prior']['type'], acc_new_location * 100))
+
+            ece = ece_criterion(valid_predictions.log(), valid_targets)
+            print('Expected Calibration Error (ECE) with prior {} = {:.3f}'.format(config['prior']['type'], ece.item()))
 
 
 if __name__ == '__main__':

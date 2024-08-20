@@ -34,6 +34,12 @@
             "lambda_weight": 0.1
         }
     },
+    "prior": {
+        "type": "TimeDecayPrior",
+        "args": {
+            "alpha": 3.0
+        }
+    },
     "metrics": [
         "accuracy"
     ],

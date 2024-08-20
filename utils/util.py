@@ -1,9 +1,13 @@
 import json
+
+import numpy as np
 import torch
 import pandas as pd
 from pathlib import Path
 from itertools import repeat
 from collections import OrderedDict
+from torch.nn import functional as F
+from torch import nn
 
 
 def ensure_dir(dirname):
@@ -69,4 +73,54 @@ class MetricTracker:
 
 def try_instantize(obj):
     return obj() if isinstance(obj, type) else obj
+
+
+
+class _ECELoss(nn.Module):
+    """Calculates the Expected Calibration Error of a model.
+
+    Thanks to https://github.com/gpleiss/temperature_scaling/blob/master/temperature_scaling.py.
+
+    This isn't necessary for temperature scaling, just a cool metric.
+
+    The input to this loss is the logits of a model, NOT the softmax scores.
+
+    This divides the confidence outputs into equally-sized interval bins.
+    In each bin, we compute the confidence gap:
+
+    bin_gap = | avg_confidence_in_bin - accuracy_in_bin |
+
+    We then return a weighted average of the gaps, based on the number
+    of samples in each bin
+
+    See: Naeini, Mahdi Pakdaman, Gregory F. Cooper, and Milos Hauskrecht.
+    "Obtaining Well Calibrated Probabilities Using Bayesian Binning." AAAI.
+    2015.
+
+    Parameters
+    ----------
+    num_bins
+        Number of confidence interval bins.
+    """
+
+    def __init__(self, num_bins: int = 15):
+        super().__init__()
+        self.bin_boundaries = np.linspace(0, 1, num_bins + 1)
+
+    def forward(self, logits: torch.Tensor, targs: torch.Tensor) -> torch.Tensor:
+        probs = F.softmax(logits, dim=1)
+        confidences, predictions = torch.max(probs, 1)
+        accuracies = predictions.eq(targs)
+
+        ece = torch.zeros(1, device=logits.device)
+        for bin_lower, bin_upper in zip(self.bin_boundaries[:-1], self.bin_boundaries[1:]):
+            # calculated |confidence - accuracy| in each bin
+            in_bin = confidences.gt(bin_lower) * confidences.le(bin_upper)
+            prop_in_bin = in_bin.float().mean()
+            if prop_in_bin.item() > 0:
+                accuracy_in_bin = accuracies[in_bin].float().mean()
+                avg_confidence_in_bin = confidences[in_bin].mean()
+                ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
+
+        return ece
 

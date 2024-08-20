@@ -1,16 +1,16 @@
 {
-    "name": "BohemianLynx_CE",
+    "name": "EurasianLynx_PITS",
     "n_gpu": 1,
 
     "arch": {
-        "type": "EfficientNetB3Model",
+        "type": "EfficientNetB3TemperatureModel",
         "args": {}
     },
     "data_loader": {
         "type": "LynxDataLoader",
         "args":{
             "data_dir": "D:\\LynxID",
-            "batch_size": 48,
+            "batch_size": 50,
             "shuffle": true,
             "training_mode": "classification",
             "image_root": "LynxID-MD+SAM-foreground",
@@ -27,10 +27,18 @@
             "amsgrad": true
         }
     },
-    "loss": {
-        "type": "CrossEntropyLoss",
+     "loss": {
+        "type": "PerInstanceTemperatureScalingLoss",
         "args":
-        { }
+        {
+            "lambda_weight": 0.1
+        }
+    },
+    "prior": {
+        "type": "MovingLocationPrior",
+        "args": {
+            "alpha": 2.5
+        }
     },
     "metrics": [
         "accuracy"
@@ -42,7 +50,7 @@
             "eta_min": 0.00001
         }
     },
-   "trainer": {
+    "trainer": {
         "epochs": 100,
 
         "save_dir": "outputs",

@@ -51,6 +51,7 @@ class LynxDataSet(VisionDataset):
         self.image_root = os.path.join(root, image_root)
         self.train = train
         self.crop_mode = crop_mode
+        self.date_column_name = 'date'
 
         annotation_file = os.path.join(root, 'LynxID-Duha-12-10-2023.csv')
 

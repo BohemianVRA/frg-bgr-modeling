@@ -50,6 +50,7 @@ class TurtleDataset(VisionDataset):
         self.image_root = os.path.join(root, image_root)
         self.train = train
         self.crop_mode = crop_mode
+        self.date_column_name = 'timestamp'
 
         annotation_file = os.path.join(root, 'metadata_base.csv')
 
@@ -59,11 +60,11 @@ class TurtleDataset(VisionDataset):
         for index, row in df.iterrows():
             image_path = get_image_path(os.path.join(root, DATASET_DEFINITION_IMAGE_ROOT), row)
             if not os.path.exists(image_path):
-                warnings.warn(f'Path {image_path} does not exist')
+                # warnings.warn(f'Path {image_path} does not exist')
+                continue
             else:
                 row_indexes.append(index)
 
-        print('Using {} out of {} files'.format(len(row_indexes), len(df)))
         df = df.iloc[row_indexes]
         df = df.reset_index()
 

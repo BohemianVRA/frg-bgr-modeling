@@ -200,7 +200,7 @@ class MultipleMovingLocationsPrior(object):
 
 
 class TimeDecayPrior(object):
-    def __init__(self, dataset, alpha, threshold=0, year_update_threshold=0):
+    def __init__(self, dataset, alpha, threshold=0, year_update_threshold=1):
         self.identity_to_last_year_map = dataset.identity_to_last_year_map
         self.alpha = alpha
         self.threshold = threshold
